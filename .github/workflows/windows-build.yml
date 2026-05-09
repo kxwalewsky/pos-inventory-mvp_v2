@@ -25,17 +25,29 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Show package scripts
+        run: npm run
+
       - name: Build Tauri Windows installer
-        run: npm run tauri:build -- --target x86_64-pc-windows-msvc
+        run: npm run tauri:build -- --bundles nsis,msi
+
       - name: Show generated files
+        if: always()
         shell: pwsh
         run: |
-              Write-Host "Generated files:"
-              Get-ChildItem -Path "src-tauri/target/release" -Recurse | Select-Object FullName
+          Write-Host "Files in src-tauri/target:"
+          if (Test-Path "src-tauri/target") {
+            Get-ChildItem -Path "src-tauri/target" -Recurse | Select-Object FullName
+          } else {
+            Write-Host "src-tauri/target does not exist"
+          }
 
-      - name: Upload Windows bundle
+      - name: Upload generated Windows files
         uses: actions/upload-artifact@v4
         with:
           name: Repetytorium-POS-Windows
-          path: src-tauri/target/release/bundle/**
+          path: |
+            src-tauri/target/release/*.exe
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
           if-no-files-found: error
