@@ -61,7 +61,9 @@ fn seed_data(conn: &Connection) -> rusqlite::Result<()> {
 fn get_tags_for(conn: &Connection, table: &str, id_col: &str, item_id: i64) -> rusqlite::Result<Vec<TagLite>> {
     let sql = format!("SELECT t.id, t.name FROM tags t JOIN {} x ON x.tag_id=t.id WHERE x.{}=?1 ORDER BY t.name", table, id_col);
     let mut stmt = conn.prepare(&sql)?;
-    stmt.query_map([item_id], |r| Ok(TagLite { id: r.get(0)?, name: r.get(1)? }))?.collect()
+    let rows = stmt.query_map([item_id], |r| Ok(TagLite { id: r.get(0)?, name: r.get(1)? }))?;
+    let result = rows.collect::<Result<Vec<_>, _>>()?;
+    Ok(result)
 }
 
 fn set_tags(conn: &Connection, table: &str, id_col: &str, item_id: i64, tag_ids: Vec<i64>) -> rusqlite::Result<()> {
@@ -82,7 +84,11 @@ fn photo_to_data_url(path: &str) -> Option<String> {
 fn list_store_models(state: State<AppState>) -> CmdResult<Vec<StoreModel>> {
     let conn = state.conn.lock().map_err(map_err)?;
     let mut stmt = conn.prepare("SELECT id, name, description, created_at, updated_at FROM store_models ORDER BY name").map_err(map_err)?;
-    stmt.query_map([], |r| Ok(StoreModel { id: r.get(0)?, name: r.get(1)?, description: r.get(2)?, created_at: r.get(3)?, updated_at: r.get(4)? })).map_err(map_err)?.collect::<Result<Vec<_>, _>>().map_err(map_err)
+    let rows = stmt
+        .query_map([], |r| Ok(StoreModel { id: r.get(0)?, name: r.get(1)?, description: r.get(2)?, created_at: r.get(3)?, updated_at: r.get(4)? }))
+        .map_err(map_err)?;
+    let result = rows.collect::<Result<Vec<_>, _>>().map_err(map_err)?;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -98,12 +104,34 @@ fn delete_store_model(state: State<AppState>, id: i64) -> CmdResult<()> { state.
 #[tauri::command]
 fn list_categories(state: State<AppState>, store_model_id: Option<i64>) -> CmdResult<Vec<Category>> {
     let conn = state.conn.lock().map_err(map_err)?;
-    let mut sql = "SELECT id, name, description, store_model_id, display_order, created_at, updated_at FROM categories".to_string();
-    if store_model_id.is_some() { sql.push_str(" WHERE store_model_id=?1"); }
-    sql.push_str(" ORDER BY display_order, name");
-    let mut stmt = conn.prepare(&sql).map_err(map_err)?;
-    let rows = if let Some(mid) = store_model_id { stmt.query_map([mid], |r| Ok(Category { id:r.get(0)?, name:r.get(1)?, description:r.get(2)?, store_model_id:r.get(3)?, display_order:r.get(4)?, created_at:r.get(5)?, updated_at:r.get(6)? })).map_err(map_err)?.collect::<Result<Vec<_>, _>>() } else { stmt.query_map([], |r| Ok(Category { id:r.get(0)?, name:r.get(1)?, description:r.get(2)?, store_model_id:r.get(3)?, display_order:r.get(4)?, created_at:r.get(5)?, updated_at:r.get(6)? })).map_err(map_err)?.collect::<Result<Vec<_>, _>>() };
-    rows.map_err(map_err)
+
+    let map_category = |r: &rusqlite::Row<'_>| {
+        Ok(Category {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            description: r.get(2)?,
+            store_model_id: r.get(3)?,
+            display_order: r.get(4)?,
+            created_at: r.get(5)?,
+            updated_at: r.get(6)?,
+        })
+    };
+
+    if let Some(mid) = store_model_id {
+        let mut stmt = conn
+            .prepare("SELECT id, name, description, store_model_id, display_order, created_at, updated_at FROM categories WHERE store_model_id=?1 ORDER BY display_order, name")
+            .map_err(map_err)?;
+        let rows = stmt.query_map([mid], map_category).map_err(map_err)?;
+        let result = rows.collect::<Result<Vec<_>, _>>().map_err(map_err)?;
+        Ok(result)
+    } else {
+        let mut stmt = conn
+            .prepare("SELECT id, name, description, store_model_id, display_order, created_at, updated_at FROM categories ORDER BY display_order, name")
+            .map_err(map_err)?;
+        let rows = stmt.query_map([], map_category).map_err(map_err)?;
+        let result = rows.collect::<Result<Vec<_>, _>>().map_err(map_err)?;
+        Ok(result)
+    }
 }
 
 #[tauri::command]
@@ -118,7 +146,11 @@ fn delete_category(state: State<AppState>, id: i64) -> CmdResult<()> { state.con
 fn list_tags(state: State<AppState>) -> CmdResult<Vec<Tag>> {
     let conn = state.conn.lock().map_err(map_err)?;
     let mut stmt = conn.prepare("SELECT t.id,t.name,t.description,(SELECT COUNT(*) FROM carrier_tags ct WHERE ct.tag_id=t.id),(SELECT COUNT(*) FROM photo_tags pt WHERE pt.tag_id=t.id) FROM tags t ORDER BY t.name").map_err(map_err)?;
-    stmt.query_map([], |r| Ok(Tag { id:r.get(0)?, name:r.get(1)?, description:r.get(2)?, carrier_count:r.get(3)?, photo_count:r.get(4)? })).map_err(map_err)?.collect::<Result<Vec<_>, _>>().map_err(map_err)
+    let rows = stmt
+        .query_map([], |r| Ok(Tag { id:r.get(0)?, name:r.get(1)?, description:r.get(2)?, carrier_count:r.get(3)?, photo_count:r.get(4)? }))
+        .map_err(map_err)?;
+    let result = rows.collect::<Result<Vec<_>, _>>().map_err(map_err)?;
+    Ok(result)
 }
 #[tauri::command]
 fn save_tag(state: State<AppState>, id: Option<i64>, name: String, description: String) -> CmdResult<i64> {
