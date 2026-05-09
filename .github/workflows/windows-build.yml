@@ -27,11 +27,15 @@ jobs:
 
       - name: Build Tauri Windows installer
         run: npm run tauri:build -- --target x86_64-pc-windows-msvc
+      - name: Show generated files
+        shell: pwsh
+        run: |
+              Write-Host "Generated files:"
+              Get-ChildItem -Path "src-tauri/target/release" -Recurse | Select-Object FullName
 
-      - name: Upload Windows installer
+      - name: Upload Windows bundle
         uses: actions/upload-artifact@v4
         with:
           name: Repetytorium-POS-Windows
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: error
